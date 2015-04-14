@@ -3,3 +3,6 @@
 name = "gsearch"
 version = "0.0.1"
 authors = ["Alexandre Lewkowicz <lewkow_a@epita.fr>"]
+
+[dependencies]
+rustc-serialize = "0.3.12"

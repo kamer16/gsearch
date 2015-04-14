@@ -39,24 +39,22 @@ pub fn fetch(path: &str, recursive: bool) -> Vec<Document>{
     res
 }
 
+// Convert file to an UTF8 string and loose information when not UTF8 encoding
 fn add_file(path: &Path, res: &mut Vec<Document>) {
+    if !path.is_file() {
+        return
+    }
+
     match File::open(&path) {
         Err(ref mut e) => println!("{:?} not a file", e),
         Ok(ref mut file) => {
             let mut s = Vec::new();
-            file.read_to_end(&mut s).unwrap();
-            let tmp: String = s.iter().map(|&c| c as char).collect();
-            for a in tmp.chars() {
-                print!("{}", a);
+            match file.read_to_end(&mut s) {
+                Ok(_) => (),
+                Err(e) => println!("{}, {}", e, path.to_str().unwrap())
             }
-            println!("");
-            for a in &s {
-                print!("{} ", a);
-            }
-            println!("{} string length", tmp.len() as isize);
-            println!("{} vec length", s.len() as isize);
-            res.push(Document::new(tmp, path.to_str().unwrap()));
-            //res.push(Document::new(String::from_utf8_lossy(& s).into_owned(), path.to_str().unwrap()));
+            res.push(Document::new(String::from_utf8_lossy(&s).into_owned(),
+                     path.to_str().unwrap()));
         }
     }
 }
