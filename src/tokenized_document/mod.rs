@@ -20,6 +20,31 @@ pub struct TokenizedDocument {
     pub url: String,
 }
 
+pub struct MultiIndex {
+    generations: Vec<Index>,
+    // Given an URL say which generation to use
+    support: HashMap<String, usize>,
+}
+
+// Rewrite new indexes of capacity 256 and then remove all the old indexes
+impl MultiIndex {
+    fn update(&mut self) {
+        let prev_last = self.generations.len();
+        let mut generation = Index::new();
+        for (url, val) in self.support.iter() {
+            if generation.len() == 256 {
+                self.generations.push(generation);
+                generation = Index::new();
+            }
+            generation.insert(url.clone(), self.generations[*val][url].clone());
+        }
+        if generation.len() > 0 {
+            self.generations.push(generation);
+        }
+        self.generations = self.generations.iter().cloned().skip(prev_last).collect();
+    }
+}
+
 // Function used to normalize our strings
 pub fn normalize(s: &str) -> String {
     s.nfkd_chars().map(|c| c.to_ascii_lowercase())
