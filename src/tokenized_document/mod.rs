@@ -1,16 +1,14 @@
-use std::ascii::AsciiExt;
-use std::collections::HashSet;
-use std::collections::HashMap;
-use std::io::Write;
-use std::io::Read;
 use rustc_serialize::json;
-use std::fs::File;
-use std::fs::PathExt;
+
+use std::ascii::AsciiExt;
+use std::collections::HashMap;
+use std::io::{Write, Read};
+use std::fs::{File, PathExt};
 use std::path::Path;
 
 use document;
 
-pub type Index = HashMap<String, HashSet<String>>;
+pub type Index = HashMap<String, Vec<String>>;
 
 #[derive(RustcEncodable,RustcDecodable)]
 pub struct Indexer {
@@ -48,12 +46,16 @@ pub fn build(td: Vec<TokenizedDocument>) -> Indexer {
     for doc in td {
         for word in doc.words {
             if res.index.contains_key(&word) {
-                res.index.get_mut(&word).unwrap().insert(doc.url.clone());
+                let v = &mut res.index.get_mut(&word).unwrap();
+                match v.binary_search(&doc.url) {
+                    Ok(_) => (),
+                    Err(pos) => v.insert(pos, doc.url.clone())
+                }
             }
             else {
-                let mut hs = HashSet::new();
-                hs.insert(doc.url.clone());
-                res.index.insert(word, hs);
+                let mut inverted_list = Vec::new();
+                inverted_list.push(doc.url.clone());
+                res.index.insert(word, inverted_list);
             }
         }
     }
@@ -63,7 +65,7 @@ pub fn build(td: Vec<TokenizedDocument>) -> Indexer {
 pub fn save(indexer: Indexer, path: &str) {
     let encoded = json::encode(&indexer).unwrap();
     let mut file = File::create(path).ok().expect("Write file Err");
-    file.write_all(encoded.as_bytes());
+    file.write_all(encoded.as_bytes()).ok().expect("Can't save");
 }
 
 pub fn load(path: &str) -> Option<Indexer> {
@@ -71,11 +73,49 @@ pub fn load(path: &str) -> Option<Indexer> {
     if (*path).is_file() {
         let mut file = File::open(&path).ok().expect("Open file Err");
         let mut encoded = String::new();
-        file.read_to_string(&mut encoded);
+        file.read_to_string(&mut encoded).ok().expect("Cant read to String");
         let decoded: Indexer = json::decode(&encoded).ok().expect("decode err");
         return Some(decoded)
     }
     else {
         return None;
+    }
+}
+
+// Index the hashmap to find inverted list
+pub fn search<'a>(indexer: &'a Indexer, word: &str)-> Option<Vec<&'a String>> {
+    // Create a new string without \n
+    let normed = word.replace("\n", "");
+    // Only look at words that are in index
+    // Returns an Vec<Peekable<iterator of &String>> over &'a str
+    let mut i_list: Vec<_> = normed.split(" ").map(|w| normalize(w))
+        // discard useless &'a str
+        .filter(|w| w.len() != 0 && indexer.index.contains_key(w))
+        // map each sub &'a str to a ref peekable iterator on the inverted list
+        .map(|w| indexer.index[&w].iter().peekable())
+        // collect our list of peekable iterators
+        .collect();
+
+    let mut res = Vec::new();
+    while i_list.len() != 0 {
+        // Consume i_list i-e consume the iterator and not the data
+        let min = i_list.iter_mut()
+            .map(|p| *p.peek().unwrap()).min().unwrap();
+        if i_list.iter_mut().fold(true, |b, p| if *p.peek().unwrap() == min {
+                                         p.next();
+                                         b && true
+                                     } else {
+                                         b && false } ) {
+            res.push(min);
+        }
+        if i_list.iter_mut().any(|p| p.is_empty()) {
+            break;
+        }
+    }
+    if res.len() > 0 {
+        Some(res)
+    }
+    else {
+        None
     }
 }
